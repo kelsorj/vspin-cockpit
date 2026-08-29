@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<!-- Bare Agilent VSpin centrifuge (without Access2 loader arm). Simplified
+     placeholder geometry: a 40x40x30 cm housing with a single continuous
+     rotor on the Z axis. Use the vspin_access_2_urdf catalog entry if a
+     loader-equipped unit is needed; that URDF carries the full meshed
+     geometry plus loader Y/Z/gripper axes. -->
+<robot name="vspin">
+  <link name="housing">
+    <visual>
+      <origin xyz="0 0 0.15" rpy="0 0 0"/>
+      <geometry><box size="0.40 0.40 0.30"/></geometry>
+      <material name="vspin_body"><color rgba="0.85 0.85 0.88 1"/></material>
+    </visual>
+  </link>
+  <link name="rotor">
+    <visual>
+      <geometry><cylinder length="0.06" radius="0.15"/></geometry>
+      <material name="rotor_body"><color rgba="0.97 0.53 0.00 1"/></material>
+    </visual>
+  </link>
+  <joint name="dof_rotor" type="continuous">
+    <parent link="housing"/>
+    <child link="rotor"/>
+    <origin xyz="0 0 0.32" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="100" velocity="200"/>
+  </joint>
+</robot>

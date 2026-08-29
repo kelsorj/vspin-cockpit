@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Access2 + VSpin cockpit</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">cockpit</span>
+    <span class="sep">›</span>
+    <span class="title">Access2 + VSpin</span>
+  </div>
+
+  <div class="conn-strip">
+    <!-- Two identical connection pills so the layout is symmetric. Each one
+         owns its own Simulate/Connect/Disconnect controls; the driver
+         instance behind each slot is swapped when Connect fires. -->
+    <div class="conn-pill" data-slot="access2">
+      <span class="dot" data-conn-dot></span>
+      <span class="name">Access2</span>
+      <label class="sim"><input type="checkbox" data-sim> sim</label>
+      <input type="text" data-host placeholder="host" title="Access2 TCP host">
+      <input type="number" data-port placeholder="port" title="Access2 TCP port" min="1" max="65535">
+      <button class="btn sm" data-cmd="connect">Connect</button>
+      <button class="btn sm ghost" data-cmd="disconnect" disabled>Disconnect</button>
+    </div>
+
+    <div class="conn-pill" data-slot="vspin">
+      <span class="dot" data-conn-dot></span>
+      <span class="name">VSpin</span>
+      <label class="sim"><input type="checkbox" data-sim> sim</label>
+      <input type="text" data-serial placeholder="serial port" title="VSpin serial port">
+      <button class="btn sm" data-cmd="connect">Connect</button>
+      <button class="btn sm ghost" data-cmd="disconnect" disabled>Disconnect</button>
+    </div>
+  </div>
+</header>
+
+<main class="cockpit">
+
+  <!-- =================================================================
+       LEFT: 3D URDF twin. Joints are updated live from `kinematic_state`
+       events streamed via SSE, plus a `read_status` poll as a fallback
+       so the pose still refreshes if SSE drops.
+       ================================================================= -->
+  <section class="viewer">
+    <div class="viewer-status" id="viewer-status">Loading three.js and URDF…</div>
+    <div class="viewer-canvas" id="viewer-canvas"></div>
+    <div class="viewer-legend">
+      <strong>Mouse:</strong> left-drag rotate · right-drag pan · wheel zoom
+      <span class="spacer"></span>
+      <span id="viewer-joints" class="muted"></span>
+    </div>
+  </section>
+
+  <!-- =================================================================
+       RIGHT: stacked device panels + KPI strip.
+       ================================================================= -->
+  <aside class="panels">
+
+    <!-- --- KPI strip: current axis positions + spin speed + LEDs --- -->
+    <div class="kpi-strip">
+      <div class="kpi"><span class="k-label">Y</span><span class="k-value" data-kpi="access2.y">--.--</span><span class="k-unit">mm</span></div>
+      <div class="kpi"><span class="k-label">Z</span><span class="k-value" data-kpi="access2.z">--.--</span><span class="k-unit">mm</span></div>
+      <div class="kpi"><span class="k-label">Grip</span><span class="k-value" data-kpi="access2.g">--.--</span><span class="k-unit">mm</span></div>
+      <div class="kpi"><span class="k-label">RPM</span><span class="k-value" data-kpi="vspin.rpm">----</span><span class="k-unit">rpm</span></div>
+      <div class="kpi"><span class="k-label">Bucket</span><span class="k-value" data-kpi="vspin.bucket">-</span></div>
+    </div>
+
+    <!-- --- Access2 panel --- -->
+    <section class="dev-panel" data-slot="access2">
+      <header class="dev-header">
+        <h2>Access2 loader</h2>
+        <div class="flags">
+          <span class="flag" data-flag="access2.homed">homed</span>
+          <span class="flag" data-flag="access2.optical_plate_sensor">plate</span>
+          <span class="flag" data-flag="access2.servos_enabled">servos</span>
+          <span class="flag bad" data-flag="access2.estop_tripped">e-stop</span>
+        </div>
+      </header>
+
+      <div class="control-grid">
+        <button class="btn primary" data-cmd="home">Home</button>
+        <button class="btn" data-cmd="park">Park</button>
+        <button class="btn" data-cmd="open_gripper">Open grip</button>
+        <button class="btn" data-cmd="close_gripper">Close grip</button>
+        <button class="btn ghost" data-cmd="reset_estop">Reset e-stop</button>
+        <button class="btn ghost" data-cmd="read_status">Refresh</button>
+      </div>
+
+      <div class="section-title">Jog</div>
+      <div class="jog-pad">
+        <div></div>
+        <button class="btn jog" data-jog="z" data-dir="+" title="Z up">▲</button>
+        <div></div>
+        <button class="btn jog" data-jog="y" data-dir="-" title="Y −">◀</button>
+        <div class="jog-inputs">
+          <input type="number" step="any" id="jog-y" value="10" title="Y step (mm)">
+          <input type="number" step="any" id="jog-z" value="5" title="Z step (mm)">
+        </div>
+        <button class="btn jog" data-jog="y" data-dir="+" title="Y +">▶</button>
+        <div></div>
+        <button class="btn jog" data-jog="z" data-dir="-" title="Z down">▼</button>
+        <div></div>
+      </div>
+      <div class="row">
+        <label>Speed</label>
+        <select id="access2-speed">
+          <option value="0" selected>Slow</option>
+          <option value="1">Medium</option>
+          <option value="2">Fast</option>
+        </select>
+        <label style="margin-left:auto">Grip step</label>
+        <input type="number" step="any" id="jog-g" value="1" style="width:6ch">
+        <button class="btn sm" data-jog="gripper" data-dir="-">◀ open</button>
+        <button class="btn sm" data-jog="gripper" data-dir="+">close ▶</button>
+      </div>
+
+      <div class="section-title">Teachpoints</div>
+      <div class="teach-row">
+        <button class="btn sm" data-teach="park">park</button>
+        <button class="btn sm" data-teach="stage">stage</button>
+        <button class="btn sm" data-teach="hover">hover</button>
+        <button class="btn sm" data-teach="bucket1">bucket 1</button>
+        <button class="btn sm" data-teach="bucket2">bucket 2</button>
+      </div>
+
+      <div class="section-title">Full cycle</div>
+      <div class="row">
+        <label>Bucket</label>
+        <select id="cycle-bucket"><option value="1">1</option><option value="2">2</option></select>
+        <label>RCF</label>
+        <input type="number" step="any" id="cycle-rcf" value="1000" style="width:8ch"><span class="pill">×g</span>
+        <label>Time</label>
+        <input type="number" step="any" id="cycle-time" value="10" style="width:6ch"><span class="pill">s</span>
+      </div>
+      <div class="row">
+        <button class="btn primary block" data-cmd="load_plate">Load</button>
+        <button class="btn primary block" data-cmd="complete_cycle">Load → Spin → Unload</button>
+        <button class="btn primary block" data-cmd="unload_plate">Unload</button>
+      </div>
+    </section>
+
+    <!-- --- VSpin panel --- -->
+    <section class="dev-panel" data-slot="vspin">
+      <header class="dev-header">
+        <h2>VSpin centrifuge</h2>
+        <div class="flags">
+          <span class="flag" data-flag="vspin.door_open">door</span>
+          <span class="flag" data-flag="vspin.door_locked">locked</span>
+          <span class="flag" data-flag="vspin.bucket_locked">bucket</span>
+          <span class="flag" data-flag="vspin.homed">homed</span>
+          <span class="flag" data-flag="vspin.spinning">spinning</span>
+        </div>
+      </header>
+
+      <div class="control-grid">
+        <button class="btn primary" data-cmd="home">Home</button>
+        <button class="btn" data-cmd="open_door">Open door</button>
+        <button class="btn" data-cmd="close_door">Close door</button>
+        <button class="btn" data-cmd="lock_bucket">Lock bkt</button>
+        <button class="btn" data-cmd="unlock_bucket">Unlock bkt</button>
+        <button class="btn ghost" data-cmd="read_status">Refresh</button>
+      </div>
+
+      <div class="section-title">Spin</div>
+      <div class="row">
+        <label>RCF</label>
+        <input type="number" step="any" id="spin-rcf" value="1000" style="width:8ch"><span class="pill">×g</span>
+        <label>RPM</label>
+        <input type="number" step="any" id="spin-rpm" value="1500" style="width:8ch"><span class="pill">rpm</span>
+      </div>
+      <div class="row">
+        <label>Time</label>
+        <input type="number" step="any" id="spin-time" value="10" style="width:6ch"><span class="pill">s</span>
+        <label>Accel</label>
+        <input type="number" id="spin-accel" value="80" style="width:5ch"><span class="pill">%</span>
+        <label>Decel</label>
+        <input type="number" id="spin-decel" value="80" style="width:5ch"><span class="pill">%</span>
+      </div>
+      <div class="row">
+        <label>Timer mode</label>
+        <select id="spin-mode">
+          <option value="time_at_speed" selected>Time at speed</option>
+          <option value="total_time">Total time</option>
+        </select>
+        <label style="margin-left:auto">Rotor radius</label>
+        <input type="number" step="any" id="spin-radius" value="100" style="width:6ch"><span class="pill">mm</span>
+      </div>
+      <div class="row">
+        <button class="btn primary block" data-cmd="spin">Spin</button>
+        <button class="btn danger block" data-cmd="stop_spin">Stop</button>
+      </div>
+
+      <div class="section-title">Bucket</div>
+      <div class="row">
+        <button class="btn sm" data-cmd="go_to_bucket" data-bucket="1">Go to 1</button>
+        <button class="btn sm" data-cmd="go_to_bucket" data-bucket="2">Go to 2</button>
+        <button class="btn sm" data-cmd="teach_bucket" data-bucket="1">Teach 1</button>
+        <button class="btn sm" data-cmd="teach_bucket" data-bucket="2">Teach 2</button>
+        <button class="btn sm" data-cmd="calculate_bucket_2">B2 = B1+180°</button>
+      </div>
+    </section>
+
+  </aside>
+
+  <!-- =================================================================
+       BOTTOM: shared diagnostic activity log. Both panels write here so
+       the operator can trace a `complete_cycle` without switching tabs.
+       ================================================================= -->
+  <footer class="log-wrap" id="log-wrap">
+    <div class="log-header" id="log-header">
+      <span class="chev">▾</span>
+      Activity log
+      <span class="spacer"></span>
+      <label class="verbose"><input type="checkbox" id="verbose"> verbose</label>
+      &nbsp;·&nbsp;
+      <a href="#" id="log-clear">clear</a>
+    </div>
+    <pre id="log"></pre>
+  </footer>
+
+</main>
+
+<!-- Three.js + URDFLoader loaded via ESM CDN. No bundler / Node toolchain
+     required — this HTML file is served as-is by the Python app. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://esm.sh/three@0.157.0",
+    "three/addons/": "https://esm.sh/three@0.157.0/examples/jsm/",
+    "urdf-loader": "https://esm.sh/urdf-loader@0.12.6"
+  }
+}
+</script>
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

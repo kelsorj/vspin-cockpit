@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vspin-cockpit"
+version = "0.1.0"
+description = "Standalone control app for the Agilent VSpin centrifuge + Access2 loader, with a URDF twin and diagnostic window."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Proprietary"}
+authors = [{name = "Reed Kelso"}]
+
+# Hard dependencies — everything the app itself needs to boot in sim mode.
+# `pyserial-asyncio` is only imported when the user connects to real
+# hardware, so it stays out of the base install.
+dependencies = [
+    "anyio>=4.3",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
+
+[project.optional-dependencies]
+# Real hardware transports. Install with:  pip install '.[hardware]'
+hardware = [
+    "pyserial-asyncio>=0.6",
+]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+# Both spellings — `vspin-cockpit` follows the repo/package name, and the
+# alias is nicer to type. Either drops the operator into the same UI.
+vspin-cockpit = "vspin_cockpit.app:main"
+cockpit = "vspin_cockpit.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vspin_cockpit"]
+
+# The static/ subpackage (index.html, app.css, app.js) rides along
+# automatically because it's inside the package tree. The URDF + meshes
+# under URDF/ are NOT shipped in the wheel — they're ~4 MB of gltf and
+# belong beside the source. Users running from a wheel install should
+# either clone the repo for URDF/ or pass --urdf-root <path>.
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
